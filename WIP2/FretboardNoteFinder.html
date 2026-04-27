@@ -2,18 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Standard 5-String Bass Trainer</title>
+    <title>Auto-Scaling Bass Trainer</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #121212; color: #eee; margin: 0; padding: 10px; }
-        .display-container { display: flex; align-items: center; justify-content: center; gap: 30px; min-height: 200px; margin-bottom: 10px; }
+        
+        /* Container stays stable while canvas resizes */
+        .display-container { display: flex; align-items: center; justify-content: center; gap: 30px; min-height: 280px; width: 100%; margin-bottom: 10px; }
+        
+        #staff-canvas { background: #fff; border-radius: 8px; box-shadow: 0 0 20px rgba(255,255,255,0.1); transition: opacity 0.3s, height 0.2s ease-out; }
         #note-display { font-size: 80px; font-weight: 800; color: #00d1b2; width: 160px; text-align: center; transition: opacity 0.3s; }
-        #staff-canvas { background: #fff; border-radius: 8px; box-shadow: 0 0 20px rgba(255,255,255,0.1); transition: opacity 0.3s; }
+        
         .faded { opacity: 0 !important; }
         .controls { background: #1e1e1e; padding: 15px; border-radius: 15px; border: 1px solid #333; max-width: 480px; width: 100%; text-align: center; }
         .group-label { display: block; margin-bottom: 6px; font-weight: bold; color: #888; text-transform: uppercase; font-size: 10px; letter-spacing: 1px; }
         .grid-layout { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 12px; }
         .mode-selection { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 12px; }
-        label { cursor: pointer; background: #2a2a2a; padding: 8px; border-radius: 6px; font-size: 11px; display: flex; align-items: center; justify-content: center; border: 1px solid transparent; transition: 0.15s; }
+        label { cursor: pointer; background: #2a2a2a; padding: 8px; border-radius: 6px; font-size: 11px; display: flex; align-items: center; justify-content: center; border: 1px solid transparent; }
         label:has(input:checked) { border-color: #00d1b2; background: #1e2e2b; color: #00d1b2; }
         .setting-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 10px 0; background: #252525; padding: 8px; border-radius: 8px; }
         input[type="number"] { width: 45px; background: #111; color: white; border: 1px solid #444; padding: 4px; text-align: center; border-radius: 4px; }
@@ -26,7 +30,7 @@
 <body>
 
     <div class="display-container">
-        <canvas id="staff-canvas" width="260" height="180"></canvas>
+        <canvas id="staff-canvas" width="260" height="160"></canvas>
         <div id="note-display">?</div>
     </div>
     
@@ -43,7 +47,7 @@
         <span class="group-label">2. Range & Timing</span>
         <div class="setting-row">
             <div><label style="font-size: 9px;">Min Fret</label><input type="number" id="minFret" value="0"></div>
-            <div><label style="font-size: 9px;">Max Fret</label><input type="number" id="maxFret" value="5"></div>
+            <div><label style="font-size: 9px;">Max Fret</label><input type="number" id="maxFret" value="12"></div>
             <div><label style="font-size: 9px;">Wait (s)</label><input type="number" id="delayInput" value="3"></div>
         </div>
 
@@ -97,10 +101,30 @@
         let audioCtx = null, isRunning = false, timeoutId = null;
 
         function drawStaff(noteName) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const lineSpacing = 18; 
-            const bottomLineY = 120;
+            const lineSpacing = 18;
+            let pos = 0;
+            if (noteName && noteName !== "?") {
+                const pureNote = noteName.replace(/[#b0-9]/g, '') + noteName.slice(-1);
+                pos = bassMethodMap[pureNote];
+            }
+
+            // Calculate Required Height and Staff Positioning
+            // We need space for the 5 lines (4 intervals) plus ledger lines
+            const topLedgers = pos > 8 ? Math.ceil((pos - 8) / 2) : 0;
+            const bottomLedgers = pos < 0 ? Math.ceil(Math.abs(pos) / 2) : 0;
             
+            // Pad the top/bottom for note heads and clef symbols
+            const paddingTop = Math.max(30, topLedgers * lineSpacing + 20);
+            const paddingBottom = Math.max(30, (bottomLedgers * lineSpacing) + 20);
+            const staffHeight = 4 * lineSpacing;
+            
+            const newHeight = staffHeight + paddingTop + paddingBottom;
+            canvas.height = newHeight;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const bottomLineY = paddingTop + staffHeight;
+
+            // Draw Staff
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 1.5;
             for(let i=0; i<5; i++) {
@@ -108,6 +132,7 @@
                 ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(240, y); ctx.stroke();
             }
 
+            // Draw Clef
             const fLineY = bottomLineY - (3 * lineSpacing);
             ctx.fillStyle = '#000';
             ctx.font = '70px serif';
@@ -115,11 +140,11 @@
 
             if (!noteName || noteName === "?") return;
 
-            const pureNote = noteName.replace(/[#b0-9]/g, '') + noteName.slice(-1);
-            const pos = bassMethodMap[pureNote];
+            // Draw Note
             const noteY = bottomLineY - (pos * (lineSpacing / 2));
-
             ctx.strokeStyle = '#000';
+            
+            // Ledger Lines (Dynamic)
             if (pos >= 9) { 
                 for (let i = 10; i <= pos; i += 2) {
                     let ly = bottomLineY - (i * (lineSpacing / 2));
@@ -151,8 +176,7 @@
             gain.gain.setValueAtTime(0, now);
             gain.gain.linearRampToValueAtTime(0.4, now + 0.05);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 1.1);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            osc.connect(gain); gain.connect(audioCtx.destination);
             osc.start(); osc.stop(now + 1.2);
         }
 
@@ -160,7 +184,6 @@
             if (!isRunning) return;
             const selectedStrings = Array.from(document.querySelectorAll('.string-check:checked')).map(cb => cb.value);
             if (selectedStrings.length === 0) return;
-
             const mode = document.querySelector('input[name="mode"]:checked').value;
             const minF = parseInt(document.getElementById('minFret').value);
             const maxF = parseInt(document.getElementById('maxFret').value);
@@ -168,7 +191,6 @@
             const showOctave = document.getElementById('toggleOctave').checked;
 
             const randomString = selectedStrings[Math.floor(Math.random() * selectedStrings.length)];
-            
             let validFrets = [];
             for (let i = minF; i <= maxF; i++) {
                 if (i >= 0 && i < neck[randomString].length) {
@@ -180,23 +202,21 @@
                     else if (mode === 'flats' && nameOnly.includes('b')) validFrets.push(i);
                 }
             }
-
             if (validFrets.length === 0) { setTimeout(loop, 200); return; }
             const fret = validFrets[Math.floor(Math.random() * validFrets.length)];
             const fullNoteName = neck[randomString][fret];
             
-            const display = document.getElementById('note-display');
-            display.innerText = showOctave ? fullNoteName : fullNoteName.replace(/[0-9]/g, '');
+            document.getElementById('note-display').innerText = showOctave ? fullNoteName : fullNoteName.replace(/[0-9]/g, '');
             drawStaff(fullNoteName);
-            display.classList.remove('faded');
+            
+            document.getElementById('note-display').classList.remove('faded');
             canvas.classList.remove('faded');
-
             timeoutId = setTimeout(() => {
                 if (!isRunning) return;
                 playNote(openFrequencies[randomString] * Math.pow(2, fret / 12));
                 timeoutId = setTimeout(() => {
                     if (!isRunning) return;
-                    display.classList.add('faded');
+                    document.getElementById('note-display').classList.add('faded');
                     canvas.classList.add('faded');
                     timeoutId = setTimeout(loop, 400);
                 }, 800); 
@@ -209,7 +229,6 @@
             document.getElementById('startButton').innerText = isRunning ? "Stop Training" : "Start Training";
             if (isRunning) loop(); else clearTimeout(timeoutId);
         });
-
         drawStaff("?");
     </script>
 </body>
