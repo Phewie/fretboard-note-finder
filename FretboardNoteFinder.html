@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bass Fretboard Trainer - Perfect Timing</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #121212; color: #eee; margin: 0; padding: 20px; }
+        
+        #note-display { 
+            font-size: 160px; 
+            font-weight: 800; 
+            margin: 5px; 
+            color: #00d1b2; 
+            min-height: 200px; 
+            display: flex; 
+            align-items: center; 
+            text-shadow: 0 0 20px rgba(0, 209, 178, 0.3);
+            transition: opacity 0.3s ease-in-out; 
+            opacity: 1;
+        }
+
+        .faded { opacity: 0 !important; }
+
+        .controls { background: #1e1e1e; padding: 20px; border-radius: 15px; box-shadow: 0 8px 32px rgba(0,0,0,0.8); text-align: center; border: 1px solid #333; max-width: 450px; width: 100%; }
+        .group-label { display: block; margin-bottom: 8px; font-weight: bold; color: #888; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+        .mode-selection, .string-selection { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .string-selection { grid-template-columns: repeat(4, 1fr); }
+        label { cursor: pointer; background: #2a2a2a; padding: 10px; border-radius: 6px; transition: 0.2s; border: 1px solid transparent; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        label:has(input:checked) { border-color: #00d1b2; background: #1e2e2b; color: #00d1b2; }
+        .setting-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 15px 0; background: #252525; padding: 10px; border-radius: 8px; }
+        .setting-item { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+        input[type="number"] { width: 50px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #111; color: white; text-align: center; font-size: 16px; }
+        button { padding: 18px; cursor: pointer; background: #00d1b2; border: none; border-radius: 8px; font-weight: bold; font-size: 20px; color: #121212; width: 100%; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="note-display">?</div>
+    
+    <div class="controls">
+        <span class="group-label">1. Strings</span>
+        <div class="string-selection">
+            <label><input type="checkbox" class="string-check" value="E" checked> E</label>
+            <label><input type="checkbox" class="string-check" value="A" checked> A</label>
+            <label><input type="checkbox" class="string-check" value="D" checked> D</label>
+            <label><input type="checkbox" class="string-check" value="G" checked> G</label>
+        </div>
+
+        <span class="group-label">2. Position & Timing</span>
+        <div class="setting-row">
+            <div class="setting-item">
+                <label style="font-size: 10px;">Min Fret</label>
+                <input type="number" id="minFret" value="0" min="0" max="24">
+            </div>
+            <div class="setting-item">
+                <label style="font-size: 10px;">Max Fret</label>
+                <input type="number" id="maxFret" value="5" min="0" max="24">
+            </div>
+            <div class="setting-item">
+                <label style="font-size: 10px;">Wait (s)</label>
+                <input type="number" id="delayInput" value="3" min="1">
+            </div>
+        </div>
+
+        <span class="group-label">3. Note Set</span>
+        <div class="mode-selection">
+            <label><input type="radio" name="mode" value="natural"> Naturals</label>
+            <label><input type="radio" name="mode" value="sharps"> Sharps</label>
+            <label><input type="radio" name="mode" value="flats"> Flats</label>
+            <label><input type="radio" name="mode" value="all" checked> All</label>
+        </div>
+
+        <button id="startButton">Start Training</button>
+    </div>
+
+    <script>
+        const neck = {
+            'E': ["E", "F", "F#", "G", "G#", "A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B", "C", "C#", "D", "Eb", "E"],
+            'A': ["A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A"],
+            'D': ["D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B", "C", "C#", "D"],
+            'G': ["G", "G#", "A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F#", "G"]
+        };
+
+        const openFrequencies = { 'E': 41.20, 'A': 55.00, 'D': 73.42, 'G': 98.00 };
+        const noteTypes = {
+            natural: ["C", "D", "E", "F", "G", "A", "B"],
+            sharps: ["C#", "D#", "F#", "G#", "A#"],
+            flats: ["Db", "Eb", "Gb", "Ab", "Bb"]
+        };
+
+        let audioCtx = null, isRunning = false, timeoutId = null;
+
+        function playNote(freq) {
+            const now = audioCtx.currentTime;
+            const masterGain = audioCtx.createGain();
+            const lpFilter = audioCtx.createBiquadFilter();
+
+            lpFilter.type = 'lowpass';
+            lpFilter.frequency.setValueAtTime(500, now);
+
+            const oscs = [
+                { type: 'sine', vol: 0.8, detune: 0 },
+                { type: 'triangle', vol: 0.6, detune: 0 },
+                { type: 'sawtooth', vol: 0.15, detune: 2 }
+            ];
+
+            oscs.forEach(o => {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = o.type;
+                osc.frequency.setValueAtTime(freq, now);
+                osc.detune.setValueAtTime(o.detune, now);
+                g.gain.setValueAtTime(o.vol, now);
+                osc.connect(g);
+                g.connect(lpFilter);
+                osc.start(now);
+                osc.stop(now + 1.2);
+            });
+
+            masterGain.gain.setValueAtTime(0, now);
+            masterGain.gain.linearRampToValueAtTime(0.9, now + 0.01);
+            masterGain.gain.exponentialRampToValueAtTime(0.01, now + 1.1);
+
+            lpFilter.connect(masterGain);
+            masterGain.connect(audioCtx.destination);
+        }
+
+        async function loop() {
+            if (!isRunning) return;
+
+            const selectedStrings = Array.from(document.querySelectorAll('.string-check:checked')).map(cb => cb.value);
+            if (selectedStrings.length === 0) {
+                document.getElementById('note-display').innerText = "Select String";
+                isRunning = false;
+                return;
+            }
+
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const minF = parseInt(document.getElementById('minFret').value);
+            const maxF = parseInt(document.getElementById('maxFret').value);
+            const waitTime = parseInt(document.getElementById('delayInput').value) * 1000;
+            
+            const randomString = selectedStrings[Math.floor(Math.random() * selectedStrings.length)];
+            
+            let validFrets = [];
+            for (let i = minF; i <= maxF; i++) {
+                if (i >= 0 && i < neck[randomString].length) {
+                    let noteName = neck[randomString][i];
+                    if (mode === 'all') validFrets.push(i);
+                    else if (mode === 'natural' && noteTypes.natural.includes(noteName)) validFrets.push(i);
+                    else if (mode === 'sharps' && noteName.includes('#')) validFrets.push(i);
+                    else if (mode === 'flats' && noteName.includes('b')) validFrets.push(i);
+                }
+            }
+
+            if (validFrets.length === 0) {
+                setTimeout(loop, 10);
+                return;
+            }
+
+            const fret = validFrets[Math.floor(Math.random() * validFrets.length)];
+            const noteName = neck[randomString][fret];
+            const display = document.getElementById('note-display');
+
+            // 1. SHOW NOTE
+            display.innerText = noteName;
+            display.classList.remove('faded');
+
+            // 2. WAIT FOR USER (Wait Time)
+            timeoutId = setTimeout(() => {
+                if (!isRunning) return;
+                
+                // 3. PLAY SOUND
+                const baseFreq = openFrequencies[randomString];
+                const finalFreq = baseFreq * Math.pow(2, fret / 12);
+                playNote(finalFreq);
+                
+                // 4. CONFIRMATION WINDOW (Keep note on screen for 800ms while sound rings)
+                timeoutId = setTimeout(() => {
+                    if (!isRunning) return;
+                    
+                    // 5. FADE OUT
+                    display.classList.add('faded');
+                    
+                    // 6. SHORT GAP BEFORE NEXT NOTE
+                    timeoutId = setTimeout(loop, 400);
+
+                }, 800); 
+
+            }, waitTime);
+        }
+
+        document.getElementById('startButton').addEventListener('click', () => {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            isRunning = !isRunning;
+            const btn = document.getElementById('startButton');
+            btn.innerText = isRunning ? "Stop Training" : "Start Training";
+            btn.style.background = isRunning ? "#ff4757" : "#00d1b2";
+            
+            if (isRunning) loop(); 
+            else { 
+                clearTimeout(timeoutId); 
+                const display = document.getElementById('note-display');
+                display.innerText = "?"; 
+                display.classList.remove('faded');
+            }
+        });
+    </script>
+</body>
+</html>
