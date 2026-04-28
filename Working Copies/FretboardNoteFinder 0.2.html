@@ -13,8 +13,6 @@
         #note-display { font-size: 80px; font-weight: 800; color: #00d1b2; width: 160px; text-align: center; transition: opacity 0.3s; }
         
         .faded { opacity: 0 !important; }
-        .hidden { display: none !important; }
-
         .controls { background: #1e1e1e; padding: 15px; border-radius: 15px; border: 1px solid #333; max-width: 480px; width: 100%; text-align: center; }
         .group-label { display: block; margin-bottom: 6px; font-weight: bold; color: #888; text-transform: uppercase; font-size: 10px; letter-spacing: 1px; }
         .grid-layout { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 12px; }
@@ -27,9 +25,6 @@
         .legend { display: grid; grid-template-columns: 1fr 1fr; background: #111; padding: 12px; border-radius: 8px; border: 1px dashed #444; font-size: 12px; color: #aaa; text-align: left; row-gap: 5px; }
         .legend-title { grid-column: span 2; text-align: center; color: #fff; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; font-size: 10px; }
         .legend-item b { color: #00d1b2; }
-
-        /* Style for the visibility toggles row */
-        .toggle-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     </style>
 </head>
 <body>
@@ -56,18 +51,14 @@
             <div><label style="font-size: 9px;">Wait (s)</label><input type="number" id="delayInput" value="3"></div>
         </div>
 
-        <span class="group-label">3. Note Set & Visibility</span>
-        <div class="mode-selection">
-            <label><input type="radio" name="mode" value="natural" checked> Naturals</label>
-            <label><input type="radio" name="mode" value="sharps"> Sharps</label>
-            <label><input type="radio" name="mode" value="flats"> Flats</label>
-            <label><input type="radio" name="mode" value="all"> All</label>
-        </div>
-
-        <div class="toggle-row">
-            <label><input type="checkbox" id="toggleStaff" checked> Staff</label>
-            <label><input type="checkbox" id="toggleNoteName" checked> Note Name</label>
-            <label><input type="checkbox" id="toggleOctave" checked> Oct #</label>
+        <div style="margin-bottom: 12px; display: flex; gap: 10px;">
+            <div class="mode-selection" style="flex: 3; margin-bottom: 0;">
+                <label><input type="radio" name="mode" value="natural" checked> Naturals</label>
+                <label><input type="radio" name="mode" value="sharps"> Sharps</label>
+                <label><input type="radio" name="mode" value="flats"> Flats</label>
+                <label><input type="radio" name="mode" value="all"> All</label>
+            </div>
+            <label style="flex: 1;"><input type="checkbox" id="toggleOctave" checked> Oct #</label>
         </div>
 
         <button id="startButton">Start Training</button>
@@ -85,7 +76,6 @@
     <script>
         const canvas = document.getElementById('staff-canvas');
         const ctx = canvas.getContext('2d');
-        const noteDisplay = document.getElementById('note-display');
 
         const bassMethodMap = {
             "G4": 21, "F4": 20, "E4": 19, "D4": 18, "C4": 17, "B3": 16, "A3": 15, "G3": 14, "F3": 13, 
@@ -118,9 +108,12 @@
                 pos = bassMethodMap[pureNote];
             }
 
+            // Calculate Required Height and Staff Positioning
+            // We need space for the 5 lines (4 intervals) plus ledger lines
             const topLedgers = pos > 8 ? Math.ceil((pos - 8) / 2) : 0;
             const bottomLedgers = pos < 0 ? Math.ceil(Math.abs(pos) / 2) : 0;
             
+            // Pad the top/bottom for note heads and clef symbols
             const paddingTop = Math.max(30, topLedgers * lineSpacing + 20);
             const paddingBottom = Math.max(30, (bottomLedgers * lineSpacing) + 20);
             const staffHeight = 4 * lineSpacing;
@@ -131,13 +124,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const bottomLineY = paddingTop + staffHeight;
 
-            // Visibility Check
-            if(!document.getElementById('toggleStaff').checked) {
-                canvas.classList.add('hidden');
-            } else {
-                canvas.classList.remove('hidden');
-            }
-
+            // Draw Staff
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 1.5;
             for(let i=0; i<5; i++) {
@@ -145,6 +132,7 @@
                 ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(240, y); ctx.stroke();
             }
 
+            // Draw Clef
             const fLineY = bottomLineY - (3 * lineSpacing);
             ctx.fillStyle = '#000';
             ctx.font = '70px serif';
@@ -152,9 +140,11 @@
 
             if (!noteName || noteName === "?") return;
 
+            // Draw Note
             const noteY = bottomLineY - (pos * (lineSpacing / 2));
             ctx.strokeStyle = '#000';
             
+            // Ledger Lines (Dynamic)
             if (pos >= 9) { 
                 for (let i = 10; i <= pos; i += 2) {
                     let ly = bottomLineY - (i * (lineSpacing / 2));
@@ -199,7 +189,6 @@
             const maxF = parseInt(document.getElementById('maxFret').value);
             const waitTime = parseInt(document.getElementById('delayInput').value) * 1000;
             const showOctave = document.getElementById('toggleOctave').checked;
-            const showName = document.getElementById('toggleNoteName').checked;
 
             const randomString = selectedStrings[Math.floor(Math.random() * selectedStrings.length)];
             let validFrets = [];
@@ -217,24 +206,17 @@
             const fret = validFrets[Math.floor(Math.random() * validFrets.length)];
             const fullNoteName = neck[randomString][fret];
             
-            // Visibility logic for Note Name
-            if (showName) {
-                noteDisplay.classList.remove('hidden');
-                noteDisplay.innerText = showOctave ? fullNoteName : fullNoteName.replace(/[0-9]/g, '');
-            } else {
-                noteDisplay.classList.add('hidden');
-            }
-
+            document.getElementById('note-display').innerText = showOctave ? fullNoteName : fullNoteName.replace(/[0-9]/g, '');
             drawStaff(fullNoteName);
             
-            noteDisplay.classList.remove('faded');
+            document.getElementById('note-display').classList.remove('faded');
             canvas.classList.remove('faded');
             timeoutId = setTimeout(() => {
                 if (!isRunning) return;
                 playNote(openFrequencies[randomString] * Math.pow(2, fret / 12));
                 timeoutId = setTimeout(() => {
                     if (!isRunning) return;
-                    noteDisplay.classList.add('faded');
+                    document.getElementById('note-display').classList.add('faded');
                     canvas.classList.add('faded');
                     timeoutId = setTimeout(loop, 400);
                 }, 800); 
@@ -247,14 +229,6 @@
             document.getElementById('startButton').innerText = isRunning ? "Stop Training" : "Start Training";
             if (isRunning) loop(); else clearTimeout(timeoutId);
         });
-
-        // Add event listeners to toggles to update UI immediately
-        document.getElementById('toggleStaff').addEventListener('change', () => drawStaff("?"));
-        document.getElementById('toggleNoteName').addEventListener('change', (e) => {
-            if(e.target.checked) noteDisplay.classList.remove('hidden');
-            else noteDisplay.classList.add('hidden');
-        });
-
         drawStaff("?");
     </script>
 </body>
